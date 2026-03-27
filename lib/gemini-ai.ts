@@ -1,8 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GenerationOptions } from './types';
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
-
 export function buildGeminiPrompt(options: GenerationOptions): string {
   const toneMap: Record<number, string> = {
     1: '매우 점잖고 차분한',
@@ -75,6 +73,13 @@ export async function generateReactionsWithGemini(
   variant?: string
 ): Promise<string[]> {
   try {
+    // 런타임에 환경 변수 읽기
+    const apiKey = process.env.GOOGLE_API_KEY;
+    if (!apiKey) {
+      throw new Error('GOOGLE_API_KEY is not set');
+    }
+    
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     let prompt = buildGeminiPrompt(options);
