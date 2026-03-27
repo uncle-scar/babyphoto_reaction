@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { generateReactionsWithGemini } from '@/lib/gemini-ai';
+import { uploadImageToStorage } from '@/lib/storage';
+import { createGenerationSession, saveReactionResults } from '@/lib/database';
+
+const USE_AI = process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== 'your_google_api_key_here';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +17,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = generateMockReactions(options, options.variant);
+    let imagePath: string | undefined;
+    let reactions: string[] = [];
+
+    // 이미지를 Supabase Storage에 업로드
+    try {
+      const uploadResult = await uploadImageToStorage(image);
+      if (uploadResult) {
+        imagePath = uploadResult.path;
+      }
+    } catch (uploadError) {
+      console.error('Image upload error:', uploadError);
+    }
+
+    // AI 또는 Mock 데이터로 리액션 생성
+    if (USE_AI) {
+      try {
+        reactions = await generateReactionsWithGemini(image, options, options.variant);
+      } catch (aiError) {
+        console.error('AI generation failed, falling back to mock:', aiError);
+        reactions = generateMockReactions(options, options.variant);
+      }
+    } else {
+      reactions = generateMockReactions(options, options.variant);
+    }
+
+    // 결과를 데이터베이스에 저장
+    const results = reactions.map((text, index) => ({
+      id: `${Date.now()}-${index}`,
+      text,
+      variantType: options.variant || 'default',
+      createdAt: new Date().toISOString(),
+    }));
+
+    try {
+      const session = await createGenerationSession(options, imagePath);
+      if (session) {
+        await saveReactionResults(session.id, results);
+      }
+    } catch (dbError) {
+      console.error('Database save error:', dbError);
+    }
 
     return NextResponse.json({ results });
   } catch (error) {
@@ -24,7 +69,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function generateMockReactions(options: any, variant?: string) {
+function generateMockReactions(options: any, variant?: string): string[] {
   const { toneLevel, intimacyLevel, focusType, speechPreset, emojiLevel } = options;
 
   const reactions = [];
@@ -193,5 +238,5 @@ function generateMockReactions(options: any, variant?: string) {
     }
   }
 
-  return reactions.slice(0, 4);
+  return reactions.slice(0, 4).map(r => r.text);
 }
