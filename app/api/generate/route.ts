@@ -3,8 +3,6 @@ import { generateReactionsWithGemini } from '@/lib/gemini-ai';
 import { uploadImageToStorage } from '@/lib/storage';
 import { createGenerationSession, saveReactionResults } from '@/lib/database';
 
-const USE_AI = process.env.GOOGLE_API_KEY && process.env.GOOGLE_API_KEY !== 'your_google_api_key_here';
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -20,6 +18,13 @@ export async function POST(request: NextRequest) {
     let imagePath: string | undefined;
     let reactions: string[] = [];
 
+    // 런타임에 환경 변수 체크
+    const googleApiKey = process.env.GOOGLE_API_KEY;
+    const useAI = googleApiKey && googleApiKey !== 'your_google_api_key_here';
+
+    console.log('[API] Google API Key exists:', !!googleApiKey);
+    console.log('[API] Using AI:', useAI);
+
     // 이미지를 Supabase Storage에 업로드
     try {
       const uploadResult = await uploadImageToStorage(image);
@@ -31,14 +36,17 @@ export async function POST(request: NextRequest) {
     }
 
     // AI 또는 Mock 데이터로 리액션 생성
-    if (USE_AI) {
+    if (useAI) {
       try {
+        console.log('[API] Attempting Gemini generation...');
         reactions = await generateReactionsWithGemini(image, options, options.variant);
+        console.log('[API] Gemini generation successful:', reactions.length, 'reactions');
       } catch (aiError) {
         console.error('AI generation failed, falling back to mock:', aiError);
         reactions = generateMockReactions(options, options.variant);
       }
     } else {
+      console.log('[API] Using mock data (no API key)');
       reactions = generateMockReactions(options, options.variant);
     }
 
